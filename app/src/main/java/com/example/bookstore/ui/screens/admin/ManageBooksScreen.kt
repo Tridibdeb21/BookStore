@@ -35,6 +35,7 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
     var title by remember { mutableStateOf("") }
     var author by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
+    var stockQuantity by remember { mutableStateOf("0") }
     var description by remember { mutableStateOf("") }
     var categoryId by remember { mutableStateOf("") }
     var coverUrl by remember { mutableStateOf("") }
@@ -42,6 +43,14 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
     var pdfUrl by remember { mutableStateOf("") }
 
     var expanded by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(status) {
+        if (status != null && !status!!.startsWith("Error")) {
+            snackbarHostState.showSnackbar(status!!)
+            viewModel.clearAddBookStatus()
+        }
+    }
 
     LaunchedEffect(bookId, books, categories) {
         if (bookId != null && books.isNotEmpty()) {
@@ -50,6 +59,7 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                 title = bookToEdit.title
                 author = bookToEdit.author
                 price = bookToEdit.price.toString()
+                stockQuantity = bookToEdit.stockQuantity.toString()
                 description = bookToEdit.description
                 categoryId = bookToEdit.categoryId
                 coverUrl = bookToEdit.imageUrl
@@ -74,7 +84,8 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -104,6 +115,14 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                 value = price,
                 onValueChange = { price = it },
                 label = { Text("Price (e.g. 19.99)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = stockQuantity,
+                onValueChange = { stockQuantity = it },
+                label = { Text("Stock Quantity") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -214,7 +233,7 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                 onClick = {
                     viewModel.saveBook(
                         bookId, title, author, price, description, 
-                        coverUrl, previewUrls.filter { it.isNotBlank() }, pdfUrl, categoryId
+                        coverUrl, previewUrls.filter { it.isNotBlank() }, pdfUrl, categoryId, stockQuantity
                     )
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp)
@@ -234,13 +253,6 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                                 Text("Dismiss")
                             }
                         }
-                    )
-                } else {
-                    Text(
-                        text = status!!,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
                     )
                 }
             }

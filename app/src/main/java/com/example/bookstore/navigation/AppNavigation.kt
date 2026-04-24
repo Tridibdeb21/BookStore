@@ -33,6 +33,9 @@ sealed class Screen(val route: String) {
         fun createRoute(bookId: String) = "book_details/$bookId"
     }
     object OrderHistory : Screen("order_history")
+    object UserOrderDetails : Screen("user_order_details/{orderId}") {
+        fun createRoute(orderId: String) = "user_order_details/$orderId"
+    }
     object BookPreview : Screen("book_preview/{bookId}") {
         fun createRoute(bookId: String) = "book_preview/$bookId"
     }
@@ -97,7 +100,10 @@ fun AppNavigation(
                 },
                 cartViewModel = cartViewModel,
                 orderViewModel = orderViewModel,
-                homeViewModel = homeViewModel
+                homeViewModel = homeViewModel,
+                onOrderClick = { orderId -> 
+                    navController.navigate(Screen.UserOrderDetails.createRoute(orderId))
+                }
             )
         }
         composable(route = Screen.AdminDashboard.route) {
@@ -158,6 +164,18 @@ fun AppNavigation(
         }
         composable(route = Screen.OrderHistory.route) {
             com.example.bookstore.ui.screens.profile.OrderHistoryScreen(
+                viewModel = orderViewModel,
+                onBack = { navController.popBackStack() },
+                onOrderClick = { orderId -> navController.navigate(Screen.UserOrderDetails.createRoute(orderId)) }
+            )
+        }
+        composable(
+            route = Screen.UserOrderDetails.route,
+            arguments = listOf(navArgument("orderId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
+            com.example.bookstore.ui.screens.profile.UserOrderDetailsScreen(
+                orderId = orderId,
                 viewModel = orderViewModel,
                 onBack = { navController.popBackStack() }
             )

@@ -17,6 +17,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
+/**
+ * ViewModel that handles all administrative operations within the application.
+ * It provides functionality for fetching, adding, updating, and deleting
+ * categories, books, and coupons, as well as managing user orders.
+ */
 class AdminViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     
@@ -77,6 +82,12 @@ class AdminViewModel : ViewModel() {
     private val _orderUpdateStatus = MutableStateFlow<String?>(null)
     val orderUpdateStatus: StateFlow<String?> = _orderUpdateStatus.asStateFlow()
 
+    /**
+     * Updates the status of an existing order in Firestore.
+     *
+     * @param orderId ID of the order to update.
+     * @param newStatus The new status string to apply (e.g. "Shipped", "Delivered").
+     */
     fun updateOrderStatus(orderId: String, newStatus: String) {
         _orderUpdateStatus.value = "Updating..."
         db.collection("orders").document(orderId).update("status", newStatus)
@@ -94,6 +105,11 @@ class AdminViewModel : ViewModel() {
 
     fun addCategory(name: String, imageUrl: String) {
         val id = UUID.randomUUID().toString()
+        val cat = Category(id, name, imageUrl)
+        db.collection("categories").document(id).set(cat)
+    }
+
+    fun updateCategory(id: String, name: String, imageUrl: String) {
         val cat = Category(id, name, imageUrl)
         db.collection("categories").document(id).set(cat)
     }
@@ -116,13 +132,28 @@ class AdminViewModel : ViewModel() {
         db.collection("coupons").document(id).delete()
     }
 
+    /**
+     * Creates or updates a book entry in the Firestore database.
+     * 
+     * @param bookId The ID of the book. If null or blank, a new ID is automatically generated.
+     * @param title Title of the book.
+     * @param author Author of the book.
+     * @param price String representation of the book's price.
+     * @param description Book description.
+     * @param coverUrl URL pointing to the book's cover image.
+     * @param previewUrls List of URLs pointing to preview images.
+     * @param pdfUrl URL pointing to a PDF preview file.
+     * @param categoryId ID of the category this book falls under.
+     * @param stockQuantity Physical inventory available for this book.
+     */
     fun saveBook(bookId: String?, title: String, author: String, price: String, description: String, 
-                 coverUrl: String, previewUrls: List<String>, pdfUrl: String, categoryId: String) {
+                 coverUrl: String, previewUrls: List<String>, pdfUrl: String, categoryId: String, stockQuantity: String) {
         if(title.isBlank() || price.isBlank()) {
             _addBookStatus.value = "Title and Price are required"
             return
         }
         val priceDouble = price.toDoubleOrNull() ?: 0.0
+        val stockInt = stockQuantity.toIntOrNull() ?: 0
         val targetId = if (bookId.isNullOrBlank()) UUID.randomUUID().toString() else bookId
         
         _addBookStatus.value = "Saving book... Please wait."
@@ -139,9 +170,10 @@ class AdminViewModel : ViewModel() {
                     description = description,
                     previewImages = previewUrls,
                     price = priceDouble,
-                    availabilityStatus = "in_stock",
+                    availabilityStatus = if (stockInt > 0) "in_stock" else "out_of_stock",
                     imageUrl = coverUrl,
-                    pdfUrl = pdfUrl
+                    pdfUrl = pdfUrl,
+                    stockQuantity = stockInt
                 )
                 
                 db.collection("books").document(targetId).set(book).await()

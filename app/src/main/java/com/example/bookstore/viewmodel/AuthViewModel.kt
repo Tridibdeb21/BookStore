@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * Represents the current authentication state of a user.
+ */
 sealed class AuthState {
     object Idle : AuthState()
     object Loading : AuthState()
@@ -15,6 +18,11 @@ sealed class AuthState {
     data class Error(val message: String) : AuthState()
 }
 
+/**
+ * ViewModel responsible for user authentication flows, including login, registration, 
+ * and session management via FirebaseAuth. It also fetches additional user role 
+ * metadata from Firestore.
+ */
 class AuthViewModel : ViewModel() {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -32,6 +40,13 @@ class AuthViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Attempts to log the user in using their email and password.
+     * Updates [authState] based on the result (Success or Error).
+     *
+     * @param email The user's email address.
+     * @param pass The user's password.
+     */
     fun login(email: String, pass: String) {
         if(email.isBlank() || pass.isBlank()) {
             _authState.value = AuthState.Error("Email and Password cannot be empty")
@@ -47,6 +62,13 @@ class AuthViewModel : ViewModel() {
             }
     }
 
+    /**
+     * Registers a new user with FirebaseAuth and creates a corresponding user document
+     * in Firestore with a default "user" role.
+     *
+     * @param email The new user's email address.
+     * @param pass The new user's desired password.
+     */
     fun register(email: String, pass: String) {
         if(email.isBlank() || pass.isBlank()) {
             _authState.value = AuthState.Error("Email and Password cannot be empty")

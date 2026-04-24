@@ -14,7 +14,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.bookstore.model.Category
 import com.example.bookstore.viewmodel.AdminViewModel
+import androidx.compose.material.icons.filled.Edit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +27,53 @@ fun AdminCategoriesScreen(
     val categories by viewModel.categories.collectAsState()
     var newCatName by remember { mutableStateOf("") }
     var newCatUrl by remember { mutableStateOf("") }
+    
+    var editingCategory by remember { mutableStateOf<Category?>(null) }
+    var editCatName by remember { mutableStateOf("") }
+    var editCatUrl by remember { mutableStateOf("") }
+
+    if (editingCategory != null) {
+        AlertDialog(
+            onDismissRequest = { editingCategory = null },
+            title = { Text("Edit Category") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editCatName,
+                        onValueChange = { editCatName = it },
+                        label = { Text("Category Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = editCatUrl,
+                        onValueChange = { editCatUrl = it },
+                        label = { Text("Category Image URL (Optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editCatName.isNotBlank()) {
+                            viewModel.updateCategory(editingCategory!!.id, editCatName, editCatUrl)
+                            editingCategory = null
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingCategory = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -94,6 +143,13 @@ fun AdminCategoriesScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(cat.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                            IconButton(onClick = {
+                                editCatName = cat.name
+                                editCatUrl = cat.imageUrl
+                                editingCategory = cat
+                            }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                            }
                             IconButton(onClick = { viewModel.deleteCategory(cat.id) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                             }

@@ -15,6 +15,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.bookstore.viewmodel.AuthState
 import com.example.bookstore.viewmodel.AuthViewModel
 
+/**
+ * Composable screen for user authentication (Login).
+ * Prompts the user for their email and password, and relies on [AuthViewModel] to process the login request.
+ * Displays error messages if the authentication fails, and navigates upon success.
+ *
+ * @param onNavigateToRegister Callback invoked when the user wants to sign up.
+ * @param onLoginSuccess Callback invoked when the authentication succeeds.
+ * @param viewModel State holder for authentication logic.
+ */
 @Composable
 fun LoginScreen(
     onNavigateToRegister: () -> Unit,

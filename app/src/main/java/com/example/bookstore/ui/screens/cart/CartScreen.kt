@@ -30,7 +30,7 @@ import com.example.bookstore.viewmodel.CartItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CartScreen(onBack: () -> Unit, cartViewModel: CartViewModel) {
+fun CartScreen(onBack: () -> Unit, onCheckoutSuccess: () -> Unit, cartViewModel: CartViewModel) {
     val cartItems by cartViewModel.cartItems.collectAsState()
     val subtotal by cartViewModel.subtotal.collectAsState()
     val total by cartViewModel.total.collectAsState()
@@ -39,7 +39,7 @@ fun CartScreen(onBack: () -> Unit, cartViewModel: CartViewModel) {
     val checkoutStatus by cartViewModel.checkoutStatus.collectAsState()
     val selectedBookIds by cartViewModel.selectedBookIds.collectAsState()
     val allSelected = cartItems.isNotEmpty() && cartItems.all { it.book.id in selectedBookIds }
-    val lastOrderItems by cartViewModel.lastOrderItems.collectAsState()
+    val lastOrder by cartViewModel.lastOrder.collectAsState()
     
     var cartSearchQuery by remember { mutableStateOf("") }
     val displayedCartItems = cartItems.filter {
@@ -54,89 +54,19 @@ fun CartScreen(onBack: () -> Unit, cartViewModel: CartViewModel) {
     var showRemoveDialog by remember { mutableStateOf(false) }
     var itemToRemove by remember { mutableStateOf<CartItem?>(null) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     LaunchedEffect(checkoutStatus) {
         if (checkoutStatus != null) {
-            Toast.makeText(context, checkoutStatus, Toast.LENGTH_SHORT).show()
+            snackbarHostState.showSnackbar(checkoutStatus!!)
             cartViewModel.resetCheckoutStatus()
         }
     }
 
-    // Order Confirmation Dialog
-    if (lastOrderItems != null) {
-        val orderedItems = lastOrderItems!!
-        val orderTotal = orderedItems.sumOf { it.price * it.quantity }
-        AlertDialog(
-            onDismissRequest = { cartViewModel.resetLastOrder() },
-            title = {
-                Text(
-                    "🎉 Order Confirmed!",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 20.sp
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        "Your order has been placed! Here's your summary:",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    orderedItems.forEach { item ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    item.bookTitle,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    "Qty: ${item.quantity}  ×  $${String.format("%.2f", item.price)}",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                "$${String.format("%.2f", item.price * item.quantity)}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total Paid", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text(
-                            "$${String.format("%.2f", orderTotal)}",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { cartViewModel.resetLastOrder() },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Great!", fontWeight = FontWeight.Bold)
-                }
-            }
-        )
+    LaunchedEffect(lastOrder) {
+        if (lastOrder != null) {
+            onCheckoutSuccess()
+        }
     }
 
     if (showRemoveDialog && itemToRemove != null) {
@@ -182,6 +112,19 @@ fun CartScreen(onBack: () -> Unit, cartViewModel: CartViewModel) {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
+        },
+        snackbarHost = { 
+            SnackbarHost(snackbarHostState) { data ->
+                val isError = data.visuals.message.startsWith("Error")
+                Snackbar(
+                    modifier = Modifier.padding(16.dp),
+                    containerColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = if (isError) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(data.visuals.message, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     ) { paddingValues ->
         Box(
@@ -292,8 +235,7 @@ fun CartScreen(onBack: () -> Unit, cartViewModel: CartViewModel) {
                     // Checkout Summary Card
                     Surface(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp),
+                            .fillMaxWidth(),
                         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                         color = MaterialTheme.colorScheme.surface,
                         tonalElevation = 8.dp,

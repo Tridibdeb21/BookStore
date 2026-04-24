@@ -24,10 +24,10 @@ class CartViewModel : ViewModel() {
     private val _checkoutStatus = MutableStateFlow<String?>(null)
     val checkoutStatus: StateFlow<String?> = _checkoutStatus.asStateFlow()
 
-    private val _lastOrderItems = MutableStateFlow<List<OrderItem>?>(null)
-    val lastOrderItems: StateFlow<List<OrderItem>?> = _lastOrderItems.asStateFlow()
+    private val _lastOrder = MutableStateFlow<Order?>(null)
+    val lastOrder: StateFlow<Order?> = _lastOrder.asStateFlow()
 
-    fun resetLastOrder() { _lastOrderItems.value = null }
+    fun resetLastOrder() { _lastOrder.value = null }
 
     private val _appliedCoupon = MutableStateFlow<Coupon?>(null)
     val appliedCoupon: StateFlow<Coupon?> = _appliedCoupon.asStateFlow()
@@ -215,18 +215,59 @@ class CartViewModel : ViewModel() {
             date = System.currentTimeMillis()
         )
 
-        newOrderRef.set(order)
-            .addOnSuccessListener {
-                _checkoutStatus.value = "Order placed successfully!"
-                _lastOrderItems.value = orderItems
-                // Restore the full cart in Firestore in case a Cloud Function cleared it
-                val uid2 = auth.currentUser?.uid ?: return@addOnSuccessListener
-                val cartSnapshot = _cartItems.value.associate { it.book.id to it.quantity }
-                db.collection("users").document(uid2).update("cart", cartSnapshot)
+        db.runTransaction { transaction ->
+            // Step 1: Read all current stock levels
+            val bookRefs = selectedItems.associate { it.book.id to db.collection("books").document(it.book.id) }
+            val bookSnapshots = bookRefs.mapValues { entry -> 
+                val snap = transaction.get(entry.value)
+                if (!snap.exists()) throw Exception("Book not found: ${entry.key}")
+                snap
             }
-            .addOnFailureListener {
-                _checkoutStatus.value = "Error: ${it.message}"
+
+            // Step 2: Validate stock
+            for (item in selectedItems) {
+                val snapshot = bookSnapshots[item.book.id]!!
+                val currentStock = snapshot.getLong("stockQuantity")?.toInt() ?: 0
+                if (currentStock < item.quantity) {
+                    throw Exception("Not enough stock for '${item.book.title}'. Only $currentStock available.")
+                }
             }
+
+            // Step 3: Deduct stock and update availability
+            for (item in selectedItems) {
+                val snapshot = bookSnapshots[item.book.id]!!
+                val currentStock = snapshot.getLong("stockQuantity")?.toInt() ?: 0
+                val newStock = currentStock - item.quantity
+                val availabilityStatus = if (newStock > 0) "in_stock" else "out_of_stock"
+                transaction.update(bookRefs[item.book.id]!!, mapOf(
+                    "stockQuantity" to newStock,
+                    "availabilityStatus" to availabilityStatus
+                ))
+            }
+
+            // Step 4: Save the new order
+            transaction.set(newOrderRef, order)
+        }
+        .addOnSuccessListener {
+            _checkoutStatus.value = null
+            _lastOrder.value = order
+            // Remove the selected items from the cart upon successful checkout
+            val uid2 = auth.currentUser?.uid ?: return@addOnSuccessListener
+            
+            db.collection("users").document(uid2).get().addOnSuccessListener { snapshot ->
+                val rawCart = snapshot.get("cart") as? Map<String, Any> ?: emptyMap()
+                val newCartMap = rawCart.mapValues { (_, v) -> (v as? Number)?.toInt() ?: 1 }.toMutableMap()
+                
+                selectedItems.forEach {
+                    newCartMap.remove(it.book.id)
+                }
+                db.collection("users").document(uid2).update("cart", newCartMap)
+                clearSelection() // Clear the local selection state
+            }
+        }
+        .addOnFailureListener {
+            _checkoutStatus.value = "Error: ${it.message}"
+        }
     }
     
     fun resetCheckoutStatus() {

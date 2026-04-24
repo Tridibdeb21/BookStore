@@ -11,7 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * ViewModel responsible for managing and fetching the user's order history.
+ * It listens to order updates from Firestore in real-time, handling fallback
+ * scenarios if database indexing isn't fully set up.
+ */
 class OrderViewModel : ViewModel() {
+    // Firebase instances for database operations and authentication
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     
@@ -31,6 +37,13 @@ class OrderViewModel : ViewModel() {
 
     private var ordersListener: ListenerRegistration? = null
 
+    /**
+     * Attempts to fetch the user's orders sorted by date descending from Firestore.
+     * Note: This requires a composite index in Firestore. If the index is missing,
+     * it falls back to a simpler query and sorts locally.
+     * 
+     * @param userId The ID of the authenticated user whose orders should be fetched.
+     */
     private fun fetchUserOrders(userId: String) {
         ordersListener?.remove()
         // Try the sorted query first (requires a Firestore composite index)
@@ -51,6 +64,12 @@ class OrderViewModel : ViewModel() {
             }
     }
 
+    /**
+     * Fallback method used when the sorted query fails (e.g., due to missing composite index).
+     * It fetches the orders directly and then sorts them by date locally in the app.
+     * 
+     * @param userId The ID of the authenticated user whose orders should be fetched.
+     */
     private fun fetchUserOrdersFallback(userId: String) {
         ordersListener?.remove()
         ordersListener = db.collection("orders")

@@ -36,7 +36,8 @@ fun MainScreen(
     onOrdersClick: () -> Unit,
     cartViewModel: com.example.bookstore.viewmodel.CartViewModel,
     orderViewModel: com.example.bookstore.viewmodel.OrderViewModel,
-    homeViewModel: com.example.bookstore.viewmodel.HomeViewModel
+    homeViewModel: com.example.bookstore.viewmodel.HomeViewModel,
+    onOrderClick: (String) -> Unit
 ) {
     val cartItems by cartViewModel.cartItems.collectAsState()
     val cartCount = cartItems.sumOf { it.quantity }
@@ -109,11 +110,27 @@ fun MainScreen(
             composable(BottomNavItem.Orders.route) {
                 com.example.bookstore.ui.screens.profile.OrderHistoryScreen(
                     viewModel = orderViewModel,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOrderClick = onOrderClick
                 )
             }
             composable(BottomNavItem.Cart.route) {
-                CartScreen(onBack = { navController.popBackStack() }, cartViewModel = cartViewModel)
+                CartScreen(
+                    onBack = { navController.popBackStack() }, 
+                    onCheckoutSuccess = { navController.navigate("order_success") },
+                    cartViewModel = cartViewModel
+                )
+            }
+            composable("order_success") {
+                com.example.bookstore.ui.screens.cart.OrderSuccessScreen(
+                    cartViewModel = cartViewModel,
+                    onContinueShopping = {
+                        cartViewModel.resetLastOrder()
+                        navController.navigate(BottomNavItem.Home.route) {
+                            popUpTo(BottomNavItem.Home.route) { inclusive = true }
+                        }
+                    }
+                )
             }
             composable(BottomNavItem.Profile.route) {
                 ProfileScreen(onLogout = onLogout, onAdminClick = onAdminClick, onWishlistClick = onWishlistClick, onOrdersClick = onOrdersClick)

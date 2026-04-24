@@ -64,9 +64,7 @@ fun AdminSalesScreen(onBack: () -> Unit, viewModel: AdminViewModel = viewModel()
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(allOrders) { order ->
-                        AdminOrderCard(order = order, onStatusChange = { newStatus -> 
-                            viewModel.updateOrderStatus(order.id, newStatus) 
-                        })
+                        AdminOrderCard(order = order)
                     }
                 }
             }
@@ -74,12 +72,9 @@ fun AdminSalesScreen(onBack: () -> Unit, viewModel: AdminViewModel = viewModel()
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminOrderCard(order: Order, onStatusChange: (String) -> Unit) {
+fun AdminOrderCard(order: Order) {
     val formatter = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault())
-    val statuses = listOf("Pending", "Processing", "Shipped", "Delivered")
-    var expanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
@@ -96,39 +91,6 @@ fun AdminOrderCard(order: Order, onStatusChange: (String) -> Unit) {
             
             order.items.forEach { item ->
                 Text("- ${item.quantity}x ${item.bookTitle}", fontSize = 14.sp)
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                OutlinedTextField(
-                    value = "Status: ${order.status}",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    )
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    statuses.forEach { statusOption ->
-                        DropdownMenuItem(
-                            text = { Text(statusOption) },
-                            onClick = {
-                                onStatusChange(statusOption)
-                                expanded = false
-                            }
-                        )
-                    }
-                }
             }
         }
     }

@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +32,19 @@ import com.example.bookstore.viewmodel.BookDetailsViewModel
 import com.example.bookstore.viewmodel.CartViewModel
 import com.example.bookstore.viewmodel.WishlistViewModel
 
+/**
+ * A detailed screen showcasing a specific book's information, including its cover, price,
+ * description, preview snippets, and community reviews. It also allows logged-in users 
+ * to submit their own reviews or add the book to their wishlist/cart.
+ *
+ * @param bookId The ID of the book to display.
+ * @param onBack Callback invoked to navigate back to the previous screen.
+ * @param onReadPreviewClick Callback invoked when the user clicks the sample preview button.
+ * @param cartViewModel ViewModel to handle shopping cart operations.
+ * @param wishlistViewModel ViewModel to handle user's wishlist operations.
+ * @param detailsViewModel ViewModel managing the state and data specific to this book.
+ * @param authViewModel ViewModel managing user authentication state.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookDetailsScreen(
@@ -195,24 +210,64 @@ fun BookDetailsScreen(
                                 Text("Read Sample Preview", fontWeight = FontWeight.Bold)
                             }
                         }
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        if (safeBook.stockQuantity > 0) {
+                            val isLowStock = safeBook.stockQuantity <= 5
+                            Surface(
+                                color = if (isLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .padding(bottom = 12.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isLowStock) Icons.Default.Warning else Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = if (isLowStock) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isLowStock) "Hurry! Only ${safeBook.stockQuantity} copies left!" else "In Stock: ${safeBook.stockQuantity} available",
+                                        color = if (isLowStock) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
                         Button(
                             onClick = { 
-                                val isAlreadyInCart = cartItems.any { it.book.id == safeBook.id }
-                                if (isAlreadyInCart) {
-                                    Toast.makeText(context, "This book is already in your shopping bag", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    cartViewModel.addToCart(safeBook) 
-                                    Toast.makeText(context, "${safeBook.title} added to cart", Toast.LENGTH_SHORT).show()
+                                if (safeBook.stockQuantity > 0) {
+                                    val isAlreadyInCart = cartItems.any { it.book.id == safeBook.id }
+                                    if (isAlreadyInCart) {
+                                        Toast.makeText(context, "This book is already in your shopping bag", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        cartViewModel.addToCart(safeBook) 
+                                        Toast.makeText(context, "${safeBook.title} added to cart", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
                             shape = RoundedCornerShape(16.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = if (safeBook.stockQuantity > 0) 4.dp else 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (safeBook.stockQuantity > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (safeBook.stockQuantity > 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         ) {
-                            Text("Add to Cart • $${String.format("%.2f", safeBook.price)}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Text(
+                                if (safeBook.stockQuantity > 0) "Add to Cart • $${String.format("%.2f", safeBook.price)}" else "Out of Stock", 
+                                fontWeight = FontWeight.Bold, 
+                                fontSize = 18.sp
+                            )
                         }
                     }
                 }

@@ -28,7 +28,7 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrderHistoryScreen(viewModel: OrderViewModel, onBack: () -> Unit) {
+fun OrderHistoryScreen(viewModel: OrderViewModel, onBack: () -> Unit, onOrderClick: (String) -> Unit) {
     val orders by viewModel.userOrders.collectAsState()
     
     val statuses = listOf("All", "Pending", "Processing", "Shipped", "Delivered", "Cancelled")
@@ -103,18 +103,20 @@ fun OrderHistoryScreen(viewModel: OrderViewModel, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(filteredOrders) { order ->
-                    OrderUserCard(order = order)
+                    OrderUserCard(order = order, onClick = { onOrderClick(order.id) })
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrderUserCard(order: Order) {
+fun OrderUserCard(order: Order, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
