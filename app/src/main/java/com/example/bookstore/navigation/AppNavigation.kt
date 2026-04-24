@@ -16,6 +16,7 @@ import com.example.bookstore.ui.screens.admin.AdminDashboardScreen
 import com.example.bookstore.ui.screens.admin.ManageBooksScreen
 
 sealed class Screen(val route: String) {
+    object Welcome : Screen("welcome")
     object Login : Screen("login")
     object Register : Screen("register")
     object Main : Screen("main")
@@ -54,9 +55,21 @@ fun AppNavigation(
 
     NavHost(
         navController = navController,
-        startDestination = Screen.Login.route,
+        startDestination = Screen.Welcome.route,
         modifier = modifier
     ) {
+        composable(route = Screen.Welcome.route) {
+            com.example.bookstore.ui.screens.WelcomeScreen(
+                onNavigateToLogin = { navController.navigate(Screen.Login.route) },
+                onNavigateToRegister = { navController.navigate(Screen.Register.route) },
+                onNavigateToMain = {
+                    cartViewModel.listenToCart()
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(route = Screen.Login.route) {
             LoginScreen(
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
