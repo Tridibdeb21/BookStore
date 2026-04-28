@@ -40,15 +40,45 @@ class AdminViewModel : ViewModel() {
     private val _coupons = MutableStateFlow<List<Coupon>>(emptyList())
     val coupons: StateFlow<List<Coupon>> = _coupons.asStateFlow()
 
+    private var categoriesListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var booksListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var ordersListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var couponsListener: com.google.firebase.firestore.ListenerRegistration? = null
+
+    private val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+
     init {
+        auth.addAuthStateListener { firebaseAuth ->
+            if (firebaseAuth.currentUser != null) {
+                refreshData()
+            } else {
+                clearData()
+            }
+        }
+    }
+
+    fun refreshData() {
+        clearData()
         fetchCategories()
         fetchBooks()
         fetchAllOrders()
         fetchCoupons()
     }
 
+    fun clearData() {
+        categoriesListener?.remove()
+        booksListener?.remove()
+        ordersListener?.remove()
+        couponsListener?.remove()
+        
+        _categories.value = emptyList()
+        _books.value = emptyList()
+        _allOrders.value = emptyList()
+        _coupons.value = emptyList()
+    }
+
     private fun fetchCategories() {
-        db.collection("categories").addSnapshotListener { snapshot, _ ->
+        categoriesListener = db.collection("categories").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
                 _categories.value = snapshot.documents.mapNotNull { it.toObject(Category::class.java)?.copy(id = it.id) }
             }
@@ -56,7 +86,7 @@ class AdminViewModel : ViewModel() {
     }
 
     private fun fetchBooks() {
-        db.collection("books").addSnapshotListener { snapshot, _ ->
+        booksListener = db.collection("books").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
                 _books.value = snapshot.documents.mapNotNull { it.toObject(Book::class.java)?.copy(id = it.id) }
             }
@@ -64,7 +94,7 @@ class AdminViewModel : ViewModel() {
     }
 
     private fun fetchAllOrders() {
-        db.collection("orders").orderBy("date", Query.Direction.DESCENDING).addSnapshotListener { snapshot, _ ->
+        ordersListener = db.collection("orders").orderBy("date", Query.Direction.DESCENDING).addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
                 _allOrders.value = snapshot.documents.mapNotNull { it.toObject(Order::class.java)?.copy(id = it.id) }
             }
@@ -72,7 +102,7 @@ class AdminViewModel : ViewModel() {
     }
 
     private fun fetchCoupons() {
-        db.collection("coupons").addSnapshotListener { snapshot, _ ->
+        couponsListener = db.collection("coupons").addSnapshotListener { snapshot, _ ->
             if (snapshot != null) {
                 _coupons.value = snapshot.documents.mapNotNull { it.toObject(Coupon::class.java)?.copy(id = it.id) }
             }

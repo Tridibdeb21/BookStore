@@ -30,9 +30,15 @@ class OrderViewModel : ViewModel() {
             if (user != null) {
                 fetchUserOrders(user.uid)
             } else {
-                _userOrders.value = emptyList()
+                clearData()
             }
         }
+    }
+
+    fun clearData() {
+        ordersListener?.remove()
+        ordersListener = null
+        _userOrders.value = emptyList()
     }
 
     private var ordersListener: ListenerRegistration? = null

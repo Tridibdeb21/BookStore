@@ -322,7 +322,7 @@ fun ProfileScreen(
 
                 // Logout Button
                 OutlinedButton(
-                    onClick = { auth.signOut(); onLogout() },
+                    onClick = { onLogout() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),

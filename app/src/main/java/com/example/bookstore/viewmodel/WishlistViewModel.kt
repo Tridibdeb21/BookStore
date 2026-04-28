@@ -19,13 +19,23 @@ class WishlistViewModel : ViewModel() {
     private val _wishlistIds = MutableStateFlow<List<String>>(emptyList())
     val wishlistIds: StateFlow<List<String>> = _wishlistIds.asStateFlow()
 
+    private var wishlistListener: com.google.firebase.firestore.ListenerRegistration? = null
+
     init {
         listenToWishlist()
     }
 
+    fun clearData() {
+        wishlistListener?.remove()
+        wishlistListener = null
+        _wishlistBooks.value = emptyList()
+        _wishlistIds.value = emptyList()
+    }
+
     private fun listenToWishlist() {
+        wishlistListener?.remove()
         val uid = auth.currentUser?.uid ?: return
-        db.collection("users").document(uid).addSnapshotListener { snapshot, _ ->
+        wishlistListener = db.collection("users").document(uid).addSnapshotListener { snapshot, _ ->
             if (snapshot != null && snapshot.exists()) {
                 val ids = snapshot.get("wishlist") as? List<String> ?: emptyList()
                 _wishlistIds.value = ids

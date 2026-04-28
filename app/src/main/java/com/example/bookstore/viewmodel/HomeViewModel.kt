@@ -27,14 +27,41 @@ class HomeViewModel : ViewModel() {
         _selectedCategoryId.value = categoryId
     }
 
+    private var booksListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var categoriesListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+
     init {
+        auth.addAuthStateListener {
+            refreshData()
+        }
+    }
+
+    fun refreshData() {
+        clearData()
         fetchData()
+    }
+
+    fun clearData() {
+        booksListener?.remove()
+        categoriesListener?.remove()
+        booksListener = null
+        categoriesListener = null
+        
+        _books.value = emptyList()
+        _categories.value = emptyList()
+        _isLoading.value = true
     }
 
     private fun fetchData() {
         _isLoading.value = true
+        
         // Fetch Categories
-        db.collection("categories").addSnapshotListener { snapshot, _ ->
+        categoriesListener = db.collection("categories").addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                android.util.Log.e("HomeViewModel", "Error fetching categories: ${error.message}")
+                return@addSnapshotListener
+            }
             if (snapshot != null) {
                 val catList = snapshot.documents.mapNotNull { it.toObject(Category::class.java)?.copy(id = it.id) }
                 _categories.value = catList
@@ -42,11 +69,15 @@ class HomeViewModel : ViewModel() {
         }
 
         // Fetch Books
-        db.collection("books").addSnapshotListener { snapshot, _ ->
+        booksListener = db.collection("books").addSnapshotListener { snapshot, error ->
+            _isLoading.value = false
+            if (error != null) {
+                android.util.Log.e("HomeViewModel", "Error fetching books: ${error.message}")
+                return@addSnapshotListener
+            }
             if (snapshot != null) {
                 val bookList = snapshot.documents.mapNotNull { it.toObject(Book::class.java)?.copy(id = it.id) }
                 _books.value = bookList
-                _isLoading.value = false
             }
         }
     }

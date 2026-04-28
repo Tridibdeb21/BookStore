@@ -52,13 +52,31 @@ class CartViewModel : ViewModel() {
         _selectedBookIds.value = emptySet()
     }
 
+    private var cartListener: com.google.firebase.firestore.ListenerRegistration? = null
+
     init {
-        listenToCart()
+        auth.addAuthStateListener { firebaseAuth ->
+            if (firebaseAuth.currentUser != null) {
+                listenToCart()
+            } else {
+                clearData()
+            }
+        }
+    }
+
+    fun clearData() {
+        cartListener?.remove()
+        cartListener = null
+        _cartItems.value = emptyList()
+        _selectedBookIds.value = emptySet()
+        _appliedCoupon.value = null
+        _couponError.value = null
     }
 
     fun listenToCart() {
+        cartListener?.remove()
         val uid = auth.currentUser?.uid ?: return
-        db.collection("users").document(uid).addSnapshotListener { snapshot, error ->
+        cartListener = db.collection("users").document(uid).addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
             
             try {

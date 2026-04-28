@@ -52,6 +52,7 @@ fun AppNavigation(
     val orderViewModel: com.example.bookstore.viewmodel.OrderViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val adminViewModel: com.example.bookstore.viewmodel.AdminViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val homeViewModel: com.example.bookstore.viewmodel.HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val authViewModel: com.example.bookstore.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
     NavHost(
         navController = navController,
@@ -63,7 +64,6 @@ fun AppNavigation(
                 onNavigateToLogin = { navController.navigate(Screen.Login.route) },
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
                 onNavigateToMain = {
-                    cartViewModel.listenToCart()
                     navController.navigate(Screen.Main.route) {
                         popUpTo(Screen.Welcome.route) { inclusive = true }
                     }
@@ -74,7 +74,6 @@ fun AppNavigation(
             LoginScreen(
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
                 onLoginSuccess = { 
-                    cartViewModel.listenToCart()
                     navController.navigate(Screen.Main.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -85,7 +84,6 @@ fun AppNavigation(
             RegisterScreen(
                 onNavigateToLogin = { navController.popBackStack() },
                 onRegisterSuccess = {
-                    cartViewModel.listenToCart()
                     navController.navigate(Screen.Main.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -98,6 +96,7 @@ fun AppNavigation(
                     navController.navigate(Screen.BookDetails.createRoute(bookId)) 
                 },
                 onLogout = {
+                    authViewModel.logout()
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
