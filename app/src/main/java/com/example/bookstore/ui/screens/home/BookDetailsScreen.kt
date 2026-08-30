@@ -1,5 +1,7 @@
 package com.example.bookstore.ui.screens.home
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,13 +27,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
+import java.util.Locale
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.bookstore.viewmodel.BookDetailsViewModel
 import com.example.bookstore.viewmodel.CartViewModel
 import com.example.bookstore.viewmodel.WishlistViewModel
+import com.example.bookstore.viewmodel.UsedListingViewModel
+import com.example.bookstore.model.UsedListing
 
 /**
  * A detailed screen showcasing a specific book's information, including its cover, price,
@@ -51,10 +58,14 @@ fun BookDetailsScreen(
     bookId: String, 
     onBack: () -> Unit,
     onReadPreviewClick: () -> Unit = {},
+    onSellUsedBookClick: (String, String, String) -> Unit,
     cartViewModel: CartViewModel,
     wishlistViewModel: WishlistViewModel,
     detailsViewModel: BookDetailsViewModel = viewModel(),
-    authViewModel: com.example.bookstore.viewmodel.AuthViewModel = viewModel()
+    authViewModel: com.example.bookstore.viewmodel.AuthViewModel = viewModel(),
+    usedListingViewModel: UsedListingViewModel = viewModel(),
+    geminiViewModel: com.example.bookstore.viewmodel.GeminiViewModel = viewModel(),
+    shelfViewModel: com.example.bookstore.viewmodel.ShelfViewModel = viewModel()
 ) {
     val book by detailsViewModel.book.collectAsState()
     val reviews by detailsViewModel.reviews.collectAsState()
@@ -68,8 +79,34 @@ fun BookDetailsScreen(
     var userRating by remember { mutableStateOf(0) }
     var userComment by remember { mutableStateOf("") }
     
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    var isSpeaking by remember { mutableStateOf(false) }
+    
+    DisposableEffect(context) {
+        val textToSpeech = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.US
+            }
+        }
+        tts = textToSpeech
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
+    }
+
     LaunchedEffect(bookId) {
         detailsViewModel.loadBook(bookId)
+        usedListingViewModel.fetchListingsForBook(bookId)
+    }
+
+    LaunchedEffect(reviews) {
+        if (reviews.isNotEmpty() && book != null) {
+            val comments = reviews.map { it.comment }.filter { it.isNotBlank() }
+            if (comments.isNotEmpty()) {
+                geminiViewModel.summarizeReviews(book!!.title, comments)
+            }
+        }
     }
 
     Scaffold(
@@ -142,6 +179,28 @@ fun BookDetailsScreen(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        if (safeBook.firstEditionLimit > 0) {
+                            val user = (authState as? com.example.bookstore.viewmodel.AuthState.Success)?.user
+                            val hasBadge = user?.firstEditionBadges?.contains(safeBook.id) == true
+                            val isAvailable = safeBook.purchasesCount < safeBook.firstEditionLimit
+
+                            if (hasBadge || isAvailable) {
+                                Surface(
+                                    color = if (hasBadge) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                ) {
+                                    Text(
+                                        text = if (hasBadge) "🎖️ First Edition Owner" else "🌟 First Edition Available",
+                                        color = if (hasBadge) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         Text(
                             text = safeBook.title,
                             fontSize = 26.sp,
@@ -180,13 +239,61 @@ fun BookDetailsScreen(
                             )
                         }
 
-                        Text(
-                            text = "$${safeBook.price}",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 16.dp)
-                        )
+                        val isFlashSaleActive = safeBook.flashSalePrice != null && safeBook.flashSaleExpiry != null && safeBook.flashSaleExpiry > System.currentTimeMillis()
+                        if (isFlashSaleActive) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "$${safeBook.flashSalePrice}",
+                                        fontSize = 32.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "$${safeBook.price}",
+                                        fontSize = 20.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = androidx.compose.ui.text.TextStyle(
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                                        )
+                                    )
+                                }
+                                var remainingTimeText by remember { mutableStateOf("") }
+                                LaunchedEffect(safeBook) {
+                                    while (true) {
+                                        val diff = safeBook.flashSaleExpiry!! - System.currentTimeMillis()
+                                        if (diff <= 0) {
+                                            remainingTimeText = "Expired"
+                                            break
+                                        }
+                                        val hours = diff / (1000 * 60 * 60)
+                                        val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
+                                        val seconds = (diff % (1000 * 60)) / 1000
+                                        remainingTimeText = String.format("⚡ Flash sale: %02d:%02d:%02d left", hours, minutes, seconds)
+                                        kotlinx.coroutines.delay(1000)
+                                    }
+                                }
+                                Text(
+                                    text = remainingTimeText,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "$${safeBook.price}",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            )
+                        }
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
@@ -199,15 +306,64 @@ fun BookDetailsScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        if (safeBook.previewImages.isNotEmpty() || safeBook.pdfUrl.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(
-                                onClick = onReadPreviewClick,
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (isSpeaking) {
+                                        tts?.stop()
+                                        isSpeaking = false
+                                    } else {
+                                        tts?.speak(if(safeBook.description.isNotBlank()) safeBook.description else "No description available", TextToSpeech.QUEUE_FLUSH, null, "desc")
+                                        isSpeaking = true
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text("Read Sample Preview", fontWeight = FontWeight.Bold)
+                                Icon(if (isSpeaking) Icons.Default.Info else Icons.Default.Info, contentDescription = "TTS", modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (isSpeaking) "Stop Reading" else "Read Description Aloud")
+                            }
+                        }
+
+                        if (safeBook.previewImages.isNotEmpty() || safeBook.pdfUrl.isNotBlank() || safeBook.languagePreviews.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            if (safeBook.languagePreviews.isNotEmpty()) {
+                                var expandedLang by remember { mutableStateOf(false) }
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    Button(
+                                        onClick = { expandedLang = true },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                    ) {
+                                        Text("Read Multi-Language Previews", fontWeight = FontWeight.Bold)
+                                    }
+                                    DropdownMenu(
+                                        expanded = expandedLang,
+                                        onDismissRequest = { expandedLang = false }
+                                    ) {
+                                        safeBook.languagePreviews.forEach { (lang, _) ->
+                                            DropdownMenuItem(
+                                                text = { Text(lang) },
+                                                onClick = {
+                                                    expandedLang = false
+                                                    onReadPreviewClick()
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = onReadPreviewClick,
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                ) {
+                                    Text("Read Sample Preview", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
@@ -241,6 +397,42 @@ fun BookDetailsScreen(
                                 }
                             }
                         }
+                        
+                        if (safeBook.pageCount > 0) {
+                            val user = (authState as? com.example.bookstore.viewmodel.AuthState.Success)?.user
+                            val pastSpeeds = user?.pastReadingSpeeds ?: emptyList()
+                            val avgSpeed = if (pastSpeeds.isNotEmpty()) pastSpeeds.average().toInt() else 30
+                            val estimatedHours = safeBook.pageCount / avgSpeed.coerceAtLeast(1)
+                            
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .padding(bottom = 12.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Est. Reading Time: ~${estimatedHours} hours (${safeBook.pageCount} pages)",
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                        
                         Button(
                             onClick = { 
                                 if (safeBook.stockQuantity > 0) {
@@ -264,12 +456,163 @@ fun BookDetailsScreen(
                             )
                         ) {
                             Text(
-                                if (safeBook.stockQuantity > 0) "Add to Cart • $${String.format("%.2f", safeBook.price)}" else "Out of Stock", 
+                                if (safeBook.stockQuantity > 0) "Add to Cart • $${String.format("%.2f", safeBook.effectivePrice)}" else "Out of Stock", 
                                 fontWeight = FontWeight.Bold, 
                                 fontSize = 18.sp
                             )
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { onSellUsedBookClick(safeBook.id, safeBook.title, safeBook.imageUrl) },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            Text("Sell Your Copy", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
                     }
+                }
+
+                // Bookshelf Quick-Add / Status Tracker Widget
+                val shelfItems by shelfViewModel.shelfItems.collectAsState()
+                val currentShelfItem = shelfItems.find { it.bookId == safeBook.id }
+                var showShelfMenu by remember { mutableStateOf(false) }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("On Your Bookshelf", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(
+                                text = if (currentShelfItem != null) "Status: ${currentShelfItem.status}" else "Not on your shelf yet",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box {
+                            AssistChip(
+                                onClick = { showShelfMenu = true },
+                                label = { Text(if (currentShelfItem != null) "${currentShelfItem.status} ▾" else "+ Add to Shelf ▾") }
+                            )
+
+                            DropdownMenu(
+                                expanded = showShelfMenu,
+                                onDismissRequest = { showShelfMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("To Read") },
+                                    onClick = {
+                                        shelfViewModel.addToShelf(safeBook.id, safeBook.title, safeBook.imageUrl, safeBook.author, "To Read")
+                                        showShelfMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Reading") },
+                                    onClick = {
+                                        shelfViewModel.addToShelf(safeBook.id, safeBook.title, safeBook.imageUrl, safeBook.author, "Reading")
+                                        showShelfMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Finished") },
+                                    onClick = {
+                                        shelfViewModel.addToShelf(safeBook.id, safeBook.title, safeBook.imageUrl, safeBook.author, "Finished")
+                                        showShelfMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Used Book Marketplace Section
+                val usedListings by usedListingViewModel.listings.collectAsState()
+                if (usedListings.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            "Used Copies Available",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        usedListings.forEach { listing ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "Condition: ${listing.condition}",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Seller: ${listing.sellerEmail}",
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = "$${String.format("%.2f", listing.askingPrice)}",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 18.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    if (listing.description.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = listing.description,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            Toast.makeText(context, "Contact seller at: ${listing.sellerEmail}", Toast.LENGTH_LONG).show()
+                                        },
+                                        modifier = Modifier.align(Alignment.End),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                    ) {
+                                        Text("Contact Seller", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 // Reviews Section
@@ -335,6 +678,68 @@ fun BookDetailsScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
+
+                    val summaryState by geminiViewModel.summaryState.collectAsState()
+                    if (reviews.isNotEmpty()) {
+                        AnimatedVisibility(
+                            visible = summaryState !is com.example.bookstore.viewmodel.GeminiUiState.Idle,
+                            enter = fadeIn() + slideInVertically(),
+                            exit = fadeOut()
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "AI Review Summary",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    when (val state = summaryState) {
+                                        is com.example.bookstore.viewmodel.GeminiUiState.Loading -> {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Generating summary...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        is com.example.bookstore.viewmodel.GeminiUiState.Success -> {
+                                            Text(
+                                                text = state.text,
+                                                fontSize = 14.sp,
+                                                lineHeight = 20.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        is com.example.bookstore.viewmodel.GeminiUiState.Error -> {
+                                            Text(
+                                                text = "Could not generate summary.",
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                        else -> {}
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                     if (reviews.isEmpty()) {
                         Text(

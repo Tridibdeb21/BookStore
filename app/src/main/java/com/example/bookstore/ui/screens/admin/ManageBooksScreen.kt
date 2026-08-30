@@ -41,6 +41,10 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
     var coverUrl by remember { mutableStateOf("") }
     var previewUrls by remember { mutableStateOf<List<String>>(List(5) { "" }) }
     var pdfUrl by remember { mutableStateOf("") }
+    var moodTags by remember { mutableStateOf("") }
+    var pageCount by remember { mutableStateOf("0") }
+    var firstEditionLimit by remember { mutableStateOf("0") }
+    var languagePreviews by remember { mutableStateOf("") }
 
     var expanded by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -66,6 +70,10 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                 val currentPreviews = bookToEdit.previewImages
                 previewUrls = List(5) { index -> if (index < currentPreviews.size) currentPreviews[index] else "" }
                 pdfUrl = bookToEdit.pdfUrl
+                moodTags = bookToEdit.moodTags.joinToString(", ")
+                pageCount = bookToEdit.pageCount.toString()
+                firstEditionLimit = bookToEdit.firstEditionLimit.toString()
+                languagePreviews = bookToEdit.languagePreviews.entries.joinToString("\n") { "${it.key}: ${it.value}" }
             }
         } else if (bookId == null && categoryId.isEmpty() && categories.isNotEmpty()) {
             categoryId = categories.first().id
@@ -125,6 +133,38 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
                 label = { Text("Stock Quantity") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = moodTags,
+                onValueChange = { moodTags = it },
+                label = { Text("Mood Tags (comma separated)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = pageCount,
+                onValueChange = { pageCount = it },
+                label = { Text("Page Count") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = firstEditionLimit,
+                onValueChange = { firstEditionLimit = it },
+                label = { Text("First Edition Limit") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = languagePreviews,
+                onValueChange = { languagePreviews = it },
+                label = { Text("Language Previews (e.g. Spanish: url)") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2
             )
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -231,9 +271,16 @@ fun ManageBooksScreen(bookId: String?, onBack: () -> Unit, viewModel: AdminViewM
             
             Button(
                 onClick = {
+                    val moodTagsList = moodTags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    val langMap = languagePreviews.lines()
+                        .filter { it.contains(":") }
+                        .associate { 
+                            val parts = it.split(":", limit = 2)
+                            parts[0].trim() to parts[1].trim()
+                        }
                     viewModel.saveBook(
                         bookId, title, author, price, description, 
-                        coverUrl, previewUrls.filter { it.isNotBlank() }, pdfUrl, categoryId, stockQuantity
+                        coverUrl, previewUrls.filter { it.isNotBlank() }, pdfUrl, categoryId, stockQuantity, moodTagsList, pageCount, firstEditionLimit, langMap
                     )
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp)

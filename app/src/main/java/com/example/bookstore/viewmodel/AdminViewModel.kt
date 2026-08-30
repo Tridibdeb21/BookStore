@@ -7,6 +7,7 @@ import com.example.bookstore.model.Book
 import com.example.bookstore.model.Category
 import com.example.bookstore.model.Coupon
 import com.example.bookstore.model.Order
+import com.example.bookstore.model.ReturnRequest
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -40,10 +41,14 @@ class AdminViewModel : ViewModel() {
     private val _coupons = MutableStateFlow<List<Coupon>>(emptyList())
     val coupons: StateFlow<List<Coupon>> = _coupons.asStateFlow()
 
+    private val _returnsList = MutableStateFlow<List<ReturnRequest>>(emptyList())
+    val returnsList: StateFlow<List<ReturnRequest>> = _returnsList.asStateFlow()
+
     private var categoriesListener: com.google.firebase.firestore.ListenerRegistration? = null
     private var booksListener: com.google.firebase.firestore.ListenerRegistration? = null
     private var ordersListener: com.google.firebase.firestore.ListenerRegistration? = null
     private var couponsListener: com.google.firebase.firestore.ListenerRegistration? = null
+    private var returnsListener: com.google.firebase.firestore.ListenerRegistration? = null
 
     private val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
 
@@ -70,11 +75,13 @@ class AdminViewModel : ViewModel() {
         booksListener?.remove()
         ordersListener?.remove()
         couponsListener?.remove()
+        returnsListener?.remove()
         
         _categories.value = emptyList()
         _books.value = emptyList()
         _allOrders.value = emptyList()
         _coupons.value = emptyList()
+        _returnsList.value = emptyList()
     }
 
     private fun fetchCategories() {
@@ -175,15 +182,21 @@ class AdminViewModel : ViewModel() {
      * @param pdfUrl URL pointing to a PDF preview file.
      * @param categoryId ID of the category this book falls under.
      * @param stockQuantity Physical inventory available for this book.
+     * @param moodTags Tags representing the mood of the book.
+     * @param pageCount Number of pages.
+     * @param firstEditionLimit Limit for first edition badges.
+     * @param languagePreviews Map of Language to PDF URL.
      */
     fun saveBook(bookId: String?, title: String, author: String, price: String, description: String, 
-                 coverUrl: String, previewUrls: List<String>, pdfUrl: String, categoryId: String, stockQuantity: String) {
+                 coverUrl: String, previewUrls: List<String>, pdfUrl: String, categoryId: String, stockQuantity: String, moodTags: List<String>, pageCount: String, firstEditionLimit: String, languagePreviews: Map<String, String>) {
         if(title.isBlank() || price.isBlank()) {
             _addBookStatus.value = "Title and Price are required"
             return
         }
         val priceDouble = price.toDoubleOrNull() ?: 0.0
         val stockInt = stockQuantity.toIntOrNull() ?: 0
+        val pageCountInt = pageCount.toIntOrNull() ?: 0
+        val firstEditionLimitInt = firstEditionLimit.toIntOrNull() ?: 0
         val targetId = if (bookId.isNullOrBlank()) UUID.randomUUID().toString() else bookId
         
         _addBookStatus.value = "Saving book... Please wait."
@@ -203,7 +216,11 @@ class AdminViewModel : ViewModel() {
                     availabilityStatus = if (stockInt > 0) "in_stock" else "out_of_stock",
                     imageUrl = coverUrl,
                     pdfUrl = pdfUrl,
-                    stockQuantity = stockInt
+                    stockQuantity = stockInt,
+                    moodTags = moodTags,
+                    pageCount = pageCountInt,
+                    firstEditionLimit = firstEditionLimitInt,
+                    languagePreviews = languagePreviews
                 )
                 
                 db.collection("books").document(targetId).set(book).await()
@@ -212,5 +229,50 @@ class AdminViewModel : ViewModel() {
                 _addBookStatus.value = "Error: ${e.message}"
             }
         }
+    }
+
+    fun fetchReturns() {
+        returnsListener?.remove()
+        returnsListener = db.collection("returns")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (snapshot != null) {
+                    _returnsList.value = snapshot.documents.mapNotNull { it.toObject(ReturnRequest::class.java)?.copy(id = it.id) }
+                }
+            }
+    }
+
+    fun updateReturnStatus(returnId: String, newStatus: String) {
+        db.collection("returns").document(returnId).update("status", newStatus)
+    }
+
+    fun setFlashSale(bookId: String, price: Double?, expiry: Long?) {
+        db.collection("books").document(bookId).update(
+            mapOf(
+                "flashSalePrice" to price,
+                "flashSaleExpiry" to expiry
+            )
+        )
+    }
+
+    fun setBookOfDay(bookId: String, isBookOfDay: Boolean) {
+        viewModelScope.launch {
+            try {
+                if (isBookOfDay) {
+                    val existing = db.collection("books").whereEqualTo("isBookOfDay", true).get().await()
+                    for (doc in existing.documents) {
+                        db.collection("books").document(doc.id).update("isBookOfDay", false).await()
+                    }
+                }
+                db.collection("books").document(bookId).update("isBookOfDay", isBookOfDay).await()
+            } catch (e: Exception) {
+                android.util.Log.e("AdminViewModel", "Error setting book of the day: ${e.message}")
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        clearData()
     }
 }

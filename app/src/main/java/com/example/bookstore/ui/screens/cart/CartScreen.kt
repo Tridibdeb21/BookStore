@@ -1,5 +1,6 @@
 package com.example.bookstore.ui.screens.cart
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,14 +12,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -214,9 +218,12 @@ fun CartScreen(onBack: () -> Unit, onCheckoutSuccess: () -> Unit, cartViewModel:
                         }
 
                         items(displayedCartItems) { item ->
+                            val timeCapsuleNotes by cartViewModel.timeCapsuleNotes.collectAsState()
                             CartCard(
                                 item = item,
                                 isSelected = item.book.id in selectedBookIds,
+                                timeCapsuleNote = timeCapsuleNotes[item.book.id] ?: "",
+                                onNoteChange = { note -> cartViewModel.updateTimeCapsuleNote(item.book.id, note) },
                                 onToggle = { cartViewModel.toggleSelection(item.book.id) },
                                 onAdd = { cartViewModel.addToCart(item.book) },
                                 onRemove = { 
@@ -381,6 +388,8 @@ fun CartScreen(onBack: () -> Unit, onCheckoutSuccess: () -> Unit, cartViewModel:
 fun CartCard(
     item: CartItem,
     isSelected: Boolean,
+    timeCapsuleNote: String = "",
+    onNoteChange: (String) -> Unit = {},
     onToggle: () -> Unit,
     onAdd: () -> Unit,
     onRemove: () -> Unit,
@@ -388,85 +397,118 @@ fun CartCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.surface
             else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
         ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)) else null
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 1.dp),
+        border = BorderStroke(
+            1.5.dp,
+            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+        )
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Selection Checkbox
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onToggle() },
-                modifier = Modifier.padding(end = 4.dp)
-            )
-
-            if (item.book.imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = item.book.imageUrl,
-                    contentDescription = "Cover",
-                    modifier = Modifier
-                        .size(80.dp, 110.dp)
-                        .clip(RoundedCornerShape(12.dp))
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggle() },
+                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.padding(end = 4.dp)
                 )
-            } else {
-                Box(
-                    modifier = Modifier.size(80.dp, 110.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Img", fontSize = 12.sp)
+
+                if (item.book.imageUrl.isNotBlank()) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        AsyncImage(
+                            model = item.book.imageUrl,
+                            contentDescription = "Cover",
+                            modifier = Modifier
+                                .size(75.dp, 105.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.size(75.dp, 105.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Img", fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        item.book.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        item.book.author,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // Quantity Control Pill Selector
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            IconButton(onClick = onRemove, modifier = Modifier.size(30.dp)) {
+                                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Text("${item.quantity}", fontWeight = FontWeight.Black, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 10.dp))
+                            IconButton(onClick = onAdd, modifier = Modifier.size(30.dp)) {
+                                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "$${String.format("%.2f", item.book.effectivePrice * item.quantity)}",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    item.book.title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    maxLines = 1
-                )
-                Text(
-                    item.book.author,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
+            if (isSelected) {
                 Spacer(modifier = Modifier.height(12.dp))
-                
-                // Quantity Selector
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
-                        Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    }
-                    Text("${item.quantity}", fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp))
-                    IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
-                        Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.5f))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "$${String.format("%.2f", item.book.price * item.quantity)}",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.primary
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = timeCapsuleNote,
+                    onValueChange = onNoteChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Time Capsule Note 🔒 (Encrypted until finished)", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                    placeholder = { Text("Write a personal goal or secret reading note...", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                 )
             }
         }

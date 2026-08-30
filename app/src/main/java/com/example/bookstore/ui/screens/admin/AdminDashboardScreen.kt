@@ -2,6 +2,8 @@ package com.example.bookstore.ui.screens.admin
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,7 +25,9 @@ fun AdminDashboardScreen(
     onManageCategoriesClick: () -> Unit, 
     onSalesDashboardClick: () -> Unit,
     onManageOrdersClick: () -> Unit,
-    onManageCouponsClick: () -> Unit
+    onManageCouponsClick: () -> Unit,
+    onManageReturnsClick: () -> Unit,
+    onManageFlashSalesClick: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -43,6 +47,7 @@ fun AdminDashboardScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -66,6 +71,7 @@ fun AdminDashboardScreen(
                 subtitle = "Organize books by genre",
                 onClick = onManageCategoriesClick
             )
+            Spacer(modifier = Modifier.height(16.dp))
             AdminActionCard(
                 title = "Order Fulfillment",
                 subtitle = "Update shipping and delivery",
@@ -82,6 +88,18 @@ fun AdminDashboardScreen(
                 title = "Sales Analytics",
                 subtitle = "View orders and revenue",
                 onClick = onSalesDashboardClick
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            AdminActionCard(
+                title = "Returns & Refunds",
+                subtitle = "Manage user return requests",
+                onClick = onManageReturnsClick
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            AdminActionCard(
+                title = "Flash Sales & Feature",
+                subtitle = "Set flash sales and Book of the Day",
+                onClick = onManageFlashSalesClick
             )
         }
     }

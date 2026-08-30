@@ -1,6 +1,8 @@
 package com.example.bookstore.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -40,6 +42,18 @@ sealed class Screen(val route: String) {
     object BookPreview : Screen("book_preview/{bookId}") {
         fun createRoute(bookId: String) = "book_preview/$bookId"
     }
+    object AdminReturns : Screen("admin_returns")
+    object SellUsedBook : Screen("sell_used_book/{bookId}/{bookTitle}/{bookCoverUrl}") {
+        fun createRoute(bookId: String, bookTitle: String, bookCoverUrl: String): String {
+            val encodedTitle = java.net.URLEncoder.encode(bookTitle, "UTF-8")
+            val encodedCover = java.net.URLEncoder.encode(bookCoverUrl, "UTF-8")
+            return "sell_used_book/$bookId/$encodedTitle/$encodedCover"
+        }
+    }
+    object AdminFlashSale : Screen("admin_flash_sale")
+    object AiRecommend : Screen("ai_recommend")
+    object AiChat : Screen("ai_chat")
+    object Shelf : Screen("shelf")
 }
 
 @Composable
@@ -53,6 +67,8 @@ fun AppNavigation(
     val adminViewModel: com.example.bookstore.viewmodel.AdminViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val homeViewModel: com.example.bookstore.viewmodel.HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val authViewModel: com.example.bookstore.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val geminiViewModel: com.example.bookstore.viewmodel.GeminiViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val shelfViewModel: com.example.bookstore.viewmodel.ShelfViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
     NavHost(
         navController = navController,
@@ -91,12 +107,14 @@ fun AppNavigation(
             )
         }
         composable(route = Screen.Main.route) {
+            val booksState by homeViewModel.books.collectAsState(initial = emptyList())
             MainScreen(
                 onBookClick = { bookId -> 
                     navController.navigate(Screen.BookDetails.createRoute(bookId)) 
                 },
                 onLogout = {
                     authViewModel.logout()
+                    geminiViewModel.clearAll()
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
@@ -109,6 +127,15 @@ fun AppNavigation(
                 },
                 onWishlistClick = {
                     navController.navigate(Screen.Wishlist.route)
+                },
+                onShelfClick = {
+                    navController.navigate(Screen.Shelf.route)
+                },
+                onAiRecommendClick = {
+                    navController.navigate(Screen.AiRecommend.route)
+                },
+                onAiChatClick = {
+                    navController.navigate(Screen.AiChat.route)
                 },
                 cartViewModel = cartViewModel,
                 orderViewModel = orderViewModel,
@@ -125,7 +152,21 @@ fun AppNavigation(
                 onManageCategoriesClick = { navController.navigate(Screen.ManageCategories.route) },
                 onSalesDashboardClick = { navController.navigate(Screen.AdminSalesDashboard.route) },
                 onManageOrdersClick = { navController.navigate(Screen.ManageOrders.route) },
-                onManageCouponsClick = { navController.navigate(Screen.ManageCoupons.route) }
+                onManageCouponsClick = { navController.navigate(Screen.ManageCoupons.route) },
+                onManageReturnsClick = { navController.navigate(Screen.AdminReturns.route) },
+                onManageFlashSalesClick = { navController.navigate(Screen.AdminFlashSale.route) }
+            )
+        }
+        composable(route = Screen.AdminReturns.route) {
+            com.example.bookstore.ui.screens.admin.AdminReturnsScreen(
+                viewModel = adminViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = Screen.AdminFlashSale.route) {
+            com.example.bookstore.ui.screens.admin.AdminFlashSaleScreen(
+                viewModel = adminViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(route = Screen.ManageOrders.route) {
@@ -201,8 +242,34 @@ fun AppNavigation(
                 bookId = bookId,
                 onBack = { navController.popBackStack() },
                 onReadPreviewClick = { navController.navigate(Screen.BookPreview.createRoute(bookId)) },
+                onSellUsedBookClick = { bId, bTitle, bCover ->
+                    navController.navigate(Screen.SellUsedBook.createRoute(bId, bTitle, bCover))
+                },
                 cartViewModel = cartViewModel,
-                wishlistViewModel = wishlistViewModel
+                wishlistViewModel = wishlistViewModel,
+                geminiViewModel = geminiViewModel,
+                shelfViewModel = shelfViewModel
+            )
+        }
+        composable(
+            route = Screen.SellUsedBook.route,
+            arguments = listOf(
+                navArgument("bookId") { type = NavType.StringType },
+                navArgument("bookTitle") { type = NavType.StringType },
+                navArgument("bookCoverUrl") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val bookId = backStackEntry.arguments?.getString("bookId") ?: ""
+            val encodedTitle = backStackEntry.arguments?.getString("bookTitle") ?: ""
+            val encodedCover = backStackEntry.arguments?.getString("bookCoverUrl") ?: ""
+            val bookTitle = java.net.URLDecoder.decode(encodedTitle, "UTF-8")
+            val bookCoverUrl = java.net.URLDecoder.decode(encodedCover, "UTF-8")
+            
+            com.example.bookstore.ui.screens.home.SellUsedBookScreen(
+                bookId = bookId,
+                bookTitle = bookTitle,
+                bookCoverUrl = bookCoverUrl,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(
@@ -213,6 +280,27 @@ fun AppNavigation(
             com.example.bookstore.ui.screens.home.BookPreviewScreen(
                 bookId = bookId,
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = Screen.AiRecommend.route) {
+            val booksState by homeViewModel.books.collectAsState(initial = emptyList())
+            com.example.bookstore.ui.screens.home.AiRecommendScreen(
+                viewModel = geminiViewModel,
+                books = booksState,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = Screen.AiChat.route) {
+            com.example.bookstore.ui.screens.home.AiChatScreen(
+                viewModel = geminiViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = Screen.Shelf.route) {
+            com.example.bookstore.ui.screens.profile.ShelfScreen(
+                onBack = { navController.popBackStack() },
+                onBookClick = { bookId -> navController.navigate(Screen.BookDetails.createRoute(bookId)) },
+                viewModel = shelfViewModel
             )
         }
     }

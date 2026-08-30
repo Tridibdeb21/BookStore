@@ -5,54 +5,85 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
+// ── Ink & Gold Dark Color Scheme ─────────────────────────────────
 private val DarkColorScheme = darkColorScheme(
-    primary = DeepMidnightBlue,
-    secondary = AntiqueSandalwood,
-    tertiary = DeepMaroon,
-    background = Color(0xFF121212),
-    surface = Color(0xFF1E1E1E),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White
+    primary              = GoldPrimary,
+    onPrimary            = InkBlack,
+    primaryContainer     = GoldDim,
+    onPrimaryContainer   = GoldLight,
+    secondary            = VioletReading,
+    onSecondary          = PearlWhite,
+    secondaryContainer   = Color(0xFF2D1F4A),
+    onSecondaryContainer = Color(0xFFD4B8FF),
+    tertiary             = EmeraldGreen,
+    onTertiary           = InkBlack,
+    tertiaryContainer    = Color(0xFF0F3025),
+    onTertiaryContainer  = Color(0xFF6FEEC4),
+    error                = CrimsonSale,
+    onError              = PearlWhite,
+    errorContainer       = Color(0xFF3A1010),
+    onErrorContainer     = Color(0xFFFF9494),
+    background           = CharcoalDeep,
+    onBackground         = PearlWhite,
+    surface              = CharcoalCard,
+    onSurface            = PearlWhite,
+    surfaceVariant       = CharcoalSurface,
+    onSurfaceVariant     = TextMuted,
+    outline              = CharcoalBorder,
+    outlineVariant       = CharcoalBorder
 )
 
+// ── Ink & Gold Light Color Scheme ────────────────────────────────
 private val LightColorScheme = lightColorScheme(
-    primary = DeepMidnightBlue,
-    secondary = AntiqueSandalwood,
-    tertiary = DeepMaroon,
-    background = SoftPaperCream,
-    surface = PureWhite,
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = TextDark,
-    onSurface = TextDark
+    primary              = GoldDim,
+    onPrimary            = CreamSurface,
+    primaryContainer     = Color(0xFFFDF3DC),
+    onPrimaryContainer   = Color(0xFF5C3D00),
+    secondary            = VioletReading,
+    onSecondary          = CreamSurface,
+    secondaryContainer   = Color(0xFFEDE5FF),
+    onSecondaryContainer = Color(0xFF3A0080),
+    tertiary             = EmeraldGreen,
+    onTertiary           = CreamSurface,
+    tertiaryContainer    = Color(0xFFD6F5E8),
+    onTertiaryContainer  = Color(0xFF003D22),
+    error                = CrimsonSale,
+    onError              = CreamSurface,
+    errorContainer       = Color(0xFFFFE4E4),
+    onErrorContainer     = Color(0xFF7A0000),
+    background           = CreamBackground,
+    onBackground         = InkText,
+    surface              = CreamSurface,
+    onSurface            = InkText,
+    surfaceVariant       = CreamCard,
+    onSurfaceVariant     = InkMuted,
+    outline              = BorderLight,
+    outlineVariant       = BorderLight
 )
 
 @Composable
 fun BookStoreTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Standardize the bookstore look - dynamic color disabled for consistent branding
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = colorScheme.background.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+        }
     }
 
     MaterialTheme(

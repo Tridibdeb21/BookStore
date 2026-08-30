@@ -38,6 +38,15 @@ class CartViewModel : ViewModel() {
     private val _selectedBookIds = MutableStateFlow<Set<String>>(emptySet())
     val selectedBookIds: StateFlow<Set<String>> = _selectedBookIds.asStateFlow()
 
+    private val _timeCapsuleNotes = MutableStateFlow<Map<String, String>>(emptyMap())
+    val timeCapsuleNotes: StateFlow<Map<String, String>> = _timeCapsuleNotes.asStateFlow()
+
+    fun updateTimeCapsuleNote(bookId: String, note: String) {
+        val current = _timeCapsuleNotes.value.toMutableMap()
+        current[bookId] = note
+        _timeCapsuleNotes.value = current
+    }
+
     fun toggleSelection(bookId: String) {
         val current = _selectedBookIds.value.toMutableSet()
         if (current.contains(bookId)) current.remove(bookId) else current.add(bookId)
@@ -122,11 +131,11 @@ class CartViewModel : ViewModel() {
 
     // Reactive subtotal and total (based on selected items only)
     val subtotal: StateFlow<Double> = combine(_cartItems, _selectedBookIds) { items, selected ->
-        items.filter { it.book.id in selected }.sumOf { it.book.price * it.quantity }
+        items.filter { it.book.id in selected }.sumOf { it.book.effectivePrice * it.quantity }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val total: StateFlow<Double> = combine(_cartItems, _appliedCoupon, _selectedBookIds) { items, coupon, selected ->
-        val sub = items.filter { it.book.id in selected }.sumOf { it.book.price * it.quantity }
+        val sub = items.filter { it.book.id in selected }.sumOf { it.book.effectivePrice * it.quantity }
         val discount = coupon?.discountPercent ?: 0
         sub * (1 - (discount / 100.0))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
@@ -218,7 +227,7 @@ class CartViewModel : ViewModel() {
         _checkoutStatus.value = "Processing..."
 
         val orderItems = selectedItems.map {
-            OrderItem(it.book.id, it.book.title, it.quantity, it.book.price)
+            OrderItem(it.book.id, it.book.title, it.quantity, it.book.effectivePrice)
         }
         val currentTotal = total.value
         
@@ -251,20 +260,62 @@ class CartViewModel : ViewModel() {
                 }
             }
 
-            // Step 3: Deduct stock and update availability
+            // Step 3: Deduct stock, update availability, and increment purchases
+            val newlyAcquiredBadges = mutableListOf<String>()
             for (item in selectedItems) {
                 val snapshot = bookSnapshots[item.book.id]!!
                 val currentStock = snapshot.getLong("stockQuantity")?.toInt() ?: 0
+                val purchasesCount = snapshot.getLong("purchasesCount")?.toInt() ?: 0
+                val firstEditionLimit = snapshot.getLong("firstEditionLimit")?.toInt() ?: 0
+                
                 val newStock = currentStock - item.quantity
                 val availabilityStatus = if (newStock > 0) "in_stock" else "out_of_stock"
+                val newPurchasesCount = purchasesCount + item.quantity
+                
                 transaction.update(bookRefs[item.book.id]!!, mapOf(
                     "stockQuantity" to newStock,
-                    "availabilityStatus" to availabilityStatus
+                    "availabilityStatus" to availabilityStatus,
+                    "purchasesCount" to newPurchasesCount
                 ))
+                
+                if (purchasesCount < firstEditionLimit) {
+                    newlyAcquiredBadges.add(item.book.id)
+                }
             }
 
-            // Step 4: Save the new order
+            // Step 4: Grant badges if any
+            if (newlyAcquiredBadges.isNotEmpty()) {
+                val userRef = db.collection("users").document(uid)
+                val userSnapshot = transaction.get(userRef)
+                if (userSnapshot.exists()) {
+                    val currentBadges = userSnapshot.get("firstEditionBadges") as? List<String> ?: emptyList()
+                    val updatedBadges = currentBadges.toMutableSet().apply {
+                         addAll(newlyAcquiredBadges)
+                    }.toList()
+                    transaction.update(userRef, "firstEditionBadges", updatedBadges)
+                }
+            }
+
+            // Step 5: Save the new order
             transaction.set(newOrderRef, order)
+
+            // Step 6: Create shelf items for purchased books with encrypted notes
+            selectedItems.forEach { item ->
+                val rawNote = _timeCapsuleNotes.value[item.book.id] ?: ""
+                val encryptedNote = if (rawNote.isNotBlank()) com.example.bookstore.util.CryptoUtils.encrypt(rawNote, uid) else ""
+                val shelfRef = db.collection("users").document(uid).collection("shelf").document(item.book.id)
+                val shelfData = mapOf(
+                    "id" to item.book.id,
+                    "bookId" to item.book.id,
+                    "title" to item.book.title,
+                    "coverUrl" to item.book.imageUrl,
+                    "author" to item.book.author,
+                    "status" to "To Read",
+                    "noteEncrypted" to encryptedNote,
+                    "addedAt" to System.currentTimeMillis()
+                )
+                transaction.set(shelfRef, shelfData, com.google.firebase.firestore.SetOptions.merge())
+            }
         }
         .addOnSuccessListener {
             _checkoutStatus.value = null

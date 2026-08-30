@@ -26,7 +26,13 @@ fun UserOrderDetailsScreen(
     onBack: () -> Unit
 ) {
     val orders by viewModel.userOrders.collectAsState()
+    val returns by viewModel.returnRequests.collectAsState()
     val order = orders.find { it.id == orderId }
+
+    var showReturnDialog by remember { mutableStateOf(false) }
+    var returnBookId by remember { mutableStateOf("") }
+    var returnBookTitle by remember { mutableStateOf("") }
+    var returnReason by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -54,6 +60,7 @@ fun UserOrderDetailsScreen(
         }
 
         val dateFormat = SimpleDateFormat("MMMM dd, yyyy 'at' hh:mm a", Locale.getDefault())
+        val isDelivered = order.status.equals("Delivered", ignoreCase = true)
 
         LazyColumn(
             modifier = Modifier
@@ -117,32 +124,77 @@ fun UserOrderDetailsScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(16.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.bookTitle,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Qty: ${item.quantity}",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Text(
-                                text = item.bookTitle,
+                                text = "$${String.format("%.2f", item.price * item.quantity)}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Qty: ${item.quantity}",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        Text(
-                            text = "$${String.format("%.2f", item.price * item.quantity)}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+
+                        if (isDelivered) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val existingReturn = returns.find { it.orderId == order.id && it.bookId == item.bookId }
+                            if (existingReturn != null) {
+                                Surface(
+                                    color = when (existingReturn.status.lowercase(Locale.ROOT)) {
+                                        "approved" -> MaterialTheme.colorScheme.primaryContainer
+                                        "rejected" -> MaterialTheme.colorScheme.errorContainer
+                                        else -> MaterialTheme.colorScheme.secondaryContainer
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text(
+                                        text = "Return Request: ${existingReturn.status.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }}",
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when (existingReturn.status.lowercase(Locale.ROOT)) {
+                                            "approved" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                            "rejected" -> MaterialTheme.colorScheme.onErrorContainer
+                                            else -> MaterialTheme.colorScheme.onSecondaryContainer
+                                        }
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        returnBookId = item.bookId
+                                        returnBookTitle = item.bookTitle
+                                        showReturnDialog = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Return Item", fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -177,5 +229,49 @@ fun UserOrderDetailsScreen(
                 }
             }
         }
+    }
+
+    if (showReturnDialog) {
+        AlertDialog(
+            onDismissRequest = { showReturnDialog = false },
+            title = { Text("Request Return", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Book: \"$returnBookTitle\"", fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = returnReason,
+                        onValueChange = { returnReason = it },
+                        label = { Text("Reason for Return") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (returnReason.isNotBlank()) {
+                            viewModel.submitReturnRequest(
+                                orderId = orderId,
+                                bookId = returnBookId,
+                                bookTitle = returnBookTitle,
+                                reason = returnReason
+                            )
+                            showReturnDialog = false
+                            returnReason = ""
+                        }
+                    }
+                ) {
+                    Text("Submit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReturnDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

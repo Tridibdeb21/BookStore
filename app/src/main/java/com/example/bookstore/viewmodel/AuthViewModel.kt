@@ -96,9 +96,38 @@ class AuthViewModel : ViewModel() {
         db.collection("users").document(uid).get()
             .addOnSuccessListener { doc ->
                 if (doc.exists()) {
-                    val role = doc.getString("role") ?: "user"
-                    val email = doc.getString("email") ?: ""
-                    _authState.value = AuthState.Success(User(uid = uid, email = email, role = role))
+                    var user = doc.toObject(User::class.java)?.copy(uid = uid)
+                    if (user != null) {
+                        val currentTime = System.currentTimeMillis()
+                        val lastActive = user.lastActiveDate
+                        
+                        val dayInMillis = 24 * 60 * 60 * 1000L
+                        val lastActiveDay = lastActive / dayInMillis
+                        val currentDay = currentTime / dayInMillis
+                        
+                        if (currentDay > lastActiveDay) {
+                            val newStreak = if (currentDay == lastActiveDay + 1) user.readingStreak + 1 else 1
+                            user = user.copy(readingStreak = newStreak, lastActiveDate = currentTime)
+                            db.collection("users").document(uid).update(
+                                mapOf(
+                                    "readingStreak" to newStreak,
+                                    "lastActiveDate" to currentTime
+                                )
+                            )
+                        } else if (lastActive == 0L) {
+                             user = user.copy(readingStreak = 1, lastActiveDate = currentTime)
+                             db.collection("users").document(uid).update(
+                                mapOf(
+                                    "readingStreak" to 1,
+                                    "lastActiveDate" to currentTime
+                                )
+                            )
+                        }
+
+                        _authState.value = AuthState.Success(user)
+                    } else {
+                        _authState.value = AuthState.Error("User data could not be parsed")
+                    }
                 } else {
                     _authState.value = AuthState.Error("User data not found")
                 }
